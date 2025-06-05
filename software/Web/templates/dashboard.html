@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-container">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <img src="{{ url_for('static', filename='images/battery-icon.png') }}" alt="BMS Logo">
+            <h2>BMS Dashboard</h2>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <ul>
+                <li class="active"><a href="#"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li><a href="#"><i class="fas fa-chart-line"></i> Analytics</a></li>
+                <li><a href="#"><i class="fas fa-history"></i> History</a></li>
+                <li><a href="#"><i class="fas fa-cog"></i> Settings</a></li>
+                <li><a href="{{ url_for('contact_admin') }}"><i class="fas fa-question-circle"></i> Need Help</a></li>
+                <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </nav>
+        
+        <div class="sidebar-footer">
+            <div class="system-status">
+                <div class="status-indicator {% if data and data.status == 'normal' %}status-good{% else %}status-warning{% endif %}"></div>
+                <span>System Status: {% if data and data.status == 'normal' %}Normal{% else %}Warning{% endif %}</span>
+            </div>
+        </div>
+    </aside>
+    
+    <main class="main-content">
+        <header class="main-header">
+            <h1>Welcome, {{ username }}</h1>
+            <div class="header-actions">
+                <div class="last-update">
+                    <i class="fas fa-clock"></i>
+                    <span id="lastUpdateTime">
+                        {% if data %}
+                            {{ data.timestamp }}
+                        {% else %}
+                            No data available
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </header>
+        
+        <div class="dashboard-grid">
+            <!-- Voltage Card -->
+            <div class="metric-card animate__animated animate__fadeInUp">
+                <div class="metric-header">
+                    <h3>Voltage</h3>
+                    <i class="fas fa-bolt"></i>
+                </div>
+                <div class="metric-value" id="voltageValue">
+                    {% if data %}
+                        {{ data.voltage }} V
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div class="metric-footer">
+                    <span class="trend up"><i class="fas fa-arrow-up"></i> 2.5%</span>
+                    <span class="status {% if data and data.voltage >= 3.6 and data.voltage <= 4.1 %}good{% else %}bad{% endif %}">
+                        {% if data and data.voltage >= 3.6 and data.voltage <= 4.1 %}
+                            Normal
+                        {% else %}
+                            Warning
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Current Card -->
+            <div class="metric-card animate__animated animate__fadeInUp" style="animation-delay: 0.1s;">
+                <div class="metric-header">
+                    <h3>Current</h3>
+                    <i class="fas fa-tachometer-alt"></i>
+                </div>
+                <div class="metric-value" id="currentValue">
+                    {% if data %}
+                        {{ data.current }} A
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div class="metric-footer">
+                    <span class="trend down"><i class="fas fa-arrow-down"></i> 1.2%</span>
+                    <span class="status good">Normal</span>
+                </div>
+            </div>
+            
+            <!-- Power Card -->
+            <div class="metric-card animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
+                <div class="metric-header">
+                    <h3>Power</h3>
+                    <i class="fas fa-charging-station"></i>
+                </div>
+                <div class="metric-value" id="powerValue">
+                    {% if data %}
+                        {{ data.power }} W
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div class="metric-footer">
+                    <span class="trend up"><i class="fas fa-arrow-up"></i> 3.7%</span>
+                    <span class="status good">Normal</span>
+                </div>
+            </div>
+            
+            <!-- Temperature Card -->
+            <div class="metric-card animate__animated animate__fadeInUp" style="animation-delay: 0.3s;">
+                <div class="metric-header">
+                    <h3>Temperature</h3>
+                    <i class="fas fa-thermometer-half"></i>
+                </div>
+                <div class="metric-value" id="temperatureValue">
+                    {% if data %}
+                        {{ data.temperature }} °C
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div class="metric-footer">
+                    <span class="trend up"><i class="fas fa-arrow-up"></i> 0.8%</span>
+                    <span class="status {% if data and data.temperature <= 38 %}good{% else %}bad{% endif %}">
+                        {% if data and data.temperature <= 38 %}
+                            Normal
+                        {% else %}
+                            Warning
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Charts Section -->
+            <div class="chart-card animate__animated animate__fadeIn">
+                <div class="chart-header">
+                    <h3>Voltage & Current Trends</h3>
+                    <div class="time-selector">
+                        <button class="active">1h</button>
+                        <button>6h</button>
+                        <button>24h</button>
+                    </div>
+                </div>
+                <canvas id="combinedChart"></canvas>
+            </div>
+            
+            <div class="chart-card animate__animated animate__fadeIn" style="animation-delay: 0.1s;">
+                <div class="chart-header">
+                    <h3>Temperature Trend</h3>
+                    <div class="time-selector">
+                        <button class="active">1h</button>
+                        <button>6h</button>
+                        <button>24h</button>
+                    </div>
+                </div>
+                <canvas id="tempChart"></canvas>
+            </div>
+            
+            <!-- System Status -->
+            <div class="status-card animate__animated animate__fadeIn">
+                <div class="status-header">
+                    <h3>System Status</h3>
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <div class="status-content">
+                    <div class="status-item">
+                        <span class="status-label">Battery Health</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 92%;"></div>
+                        </div>
+                        <span class="status-value">92%</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Charge Cycles</span>
+                        <span class="status-value">143</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Last Anomaly</span>
+                        <span class="status-value" id="lastAnomaly">
+                            {% if data and data.status != 'normal' %}
+                                {{ data.timestamp }} ({{ data.status.replace('_', ' ') }})
+                            {% else %}
+                                No recent anomalies
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize charts
+        const combinedCtx = document.getElementById('combinedChart').getContext('2d');
+        const tempCtx = document.getElementById('tempChart').getContext('2d');
+        
+        const combinedChart = new Chart(combinedCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 20}, (_, i) => i + 1),
+                datasets: [
+                    {
+                        label: 'Voltage (V)',
+                        data: Array.from({length: 20}, () => Math.random() * 0.7 + 3.5),
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.4,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Current (A)',
+                        data: Array.from({length: 20}, () => Math.random() * 2 + 0.5),
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        tension: 0.4,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Voltage (V)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Current (A)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                },
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart'
+                }
+            }
+        });
+        
+        const tempChart = new Chart(tempCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 20}, (_, i) => i + 1),
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: Array.from({length: 20}, () => Math.random() * 15 + 25),
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 20,
+                        max: 45,
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        }
+                    }
+                },
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart'
+                }
+            }
+        });
+        
+        // Socket.io for real-time updates
+        const socket = io();
+        
+        socket.on('battery_update', function(data) {
+            document.getElementById('voltageValue').textContent = data.voltage + ' V';
+            document.getElementById('currentValue').textContent = data.current + ' A';
+            document.getElementById('powerValue').textContent = data.power + ' W';
+            document.getElementById('temperatureValue').textContent = data.temperature + ' °C';
+            document.getElementById('lastUpdateTime').textContent = data.timestamp;
+            
+            // Update status indicators
+            const voltageStatus = document.querySelector('.metric-card:nth-child(1) .status');
+            const tempStatus = document.querySelector('.metric-card:nth-child(4) .status');
+            const systemStatus = document.querySelector('.status-indicator');
+            
+            if (data.voltage >= 3.6 && data.voltage <= 4.1) {
+                voltageStatus.className = 'status good';
+                voltageStatus.textContent = 'Normal';
+            } else {
+                voltageStatus.className = 'status bad';
+                voltageStatus.textContent = 'Warning';
+            }
+            
+            if (data.temperature <= 38) {
+                tempStatus.className = 'status good';
+                tempStatus.textContent = 'Normal';
+            } else {
+                tempStatus.className = 'status bad';
+                tempStatus.textContent = 'Warning';
+            }
+            
+            if (data.status === 'normal') {
+                systemStatus.className = 'status-indicator status-good';
+                document.querySelector('.system-status span').textContent = 'System Status: Normal';
+            } else {
+                systemStatus.className = 'status-indicator status-warning';
+                document.querySelector('.system-status span').textContent = 'System Status: Warning';
+                document.getElementById('lastAnomaly').textContent = 
+                    `${data.timestamp} (${data.status.replace('_', ' ')})`;
+            }
+            
+            // Add data to charts
+            addChartData(combinedChart, [data.voltage, data.current]);
+            addChartData(tempChart, [data.temperature]);
+        });
+        
+        socket.on('notification', function(notification) {
+            showNotification(notification.message, notification.level);
+        });
+        
+        function addChartData(chart, newData) {
+            if (chart.data.datasets.length > 1) {
+                // For combined chart
+                chart.data.datasets[0].data.push(newData[0]);
+                chart.data.datasets[1].data.push(newData[1]);
+            } else {
+                // For single dataset charts
+                chart.data.datasets[0].data.push(newData[0]);
+            }
+            
+            chart.data.labels.push('');
+            
+            if (chart.data.datasets[0].data.length > 20) {
+                chart.data.datasets.forEach(dataset => {
+                    dataset.data.shift();
+                });
+                chart.data.labels.shift();
+            }
+            
+            chart.update();
+        }
+        
+        function showNotification(message, level = 'info') {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            notification.className = `notification animate__animated animate__fadeInRight ${level}`;
+            notification.innerHTML = `
+                <div class="notification-icon">
+                    ${level === 'warning' ? '<i class="fas fa-exclamation-triangle"></i>' : '<i class="fas fa-info-circle"></i>'}
+                </div>
+                <div class="notification-content">
+                    <p>${message}</p>
+                    <small>Just now</small>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            container.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.classList.add('animate__fadeOutRight');
+                setTimeout(() => notification.remove(), 500);
+            }, 5000);
+        }
+    });
+</script>
+{% endblock %}
