@@ -1,0 +1,19 @@
+import smtplib
+
+# email = input("Sender email: ")
+email = "@gmail.com"
+# receiver_email = input("RECEIVER EMAIL: ")
+receiver_email = "@gmail.com"
+
+subject = input("SUBJECT: ")
+message = input("MESSAGE: ")
+
+text = f"Subject: {subject}\n\n{message}"
+
+server = smtplib.SMTP("smtp.gmail.com", 587)
+server.starttls()
+
+server.login(email, "")
+server.sendmail(email, receiver_email, text)
+
+print("Email sent + receiver_email")
