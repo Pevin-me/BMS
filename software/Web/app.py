@@ -1,15 +1,63 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit
-import random
-from datetime import datetime
+from sensor_reader import BMSSensorReader
+import threading
 import time
-from threading import Thread
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
 socketio = SocketIO(app)
+
+# Initialize sensor reader
+sensor_reader = BMSSensorReader()
+
+def sensor_reading_thread():
+    """Background thread that reads sensors and emits updates"""
+    while True:
+        sensor_data = sensor_reader.read_all_sensors()
+        
+        # Check for anomalies
+        status = "normal"
+        if sensor_data['temperature'] and sensor_data['temperature'] > 40:
+            status = "temperature_anomaly"
+        if sensor_data['battery_voltage'] < 3.6 or sensor_data['battery_voltage'] > 4.1:
+            status = "voltage_anomaly"
+        
+        # Add status to data
+        sensor_data['status'] = status
+        
+        # Save to database
+        conn = sqlite3.connect('bms.db')
+        c = conn.cursor()
+        c.execute('''INSERT INTO battery_data 
+                    (voltage, current, power, temperature, status)
+                    VALUES (?, ?, ?, ?, ?)''',
+                    (sensor_data['battery_voltage'], 
+                     sensor_data['current'], 
+                     sensor_data['power'], 
+                     sensor_data['temperature'], 
+                     status))
+        conn.commit()
+        conn.close()
+        
+        # Emit to all connected clients
+        socketio.emit('battery_update', sensor_data)
+        
+        # Check for anomalies and send notifications
+        if status != "normal":
+            notification = {
+                'message': f"Anomaly detected: {status.replace('_', ' ')}",
+                'level': 'warning',
+                'timestamp': time.strftime("%H:%M:%S")
+            }
+            socketio.emit('notification', notification)
+        
+        time.sleep(2)  # Adjust interval as needed
+
+# Start the background thread when the app starts
+threading.Thread(target=sensor_reading_thread, daemon=True).start()
 
 # Database setup
 def init_db():

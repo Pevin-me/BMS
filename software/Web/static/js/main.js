@@ -41,13 +41,41 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Handle battery updates from server
+// Handle battery updates from server
 socket.on('battery_update', function(data) {
-    updateDashboard(data);
+    // Update all displayed values
+    document.getElementById('voltageValue').textContent = data.battery_voltage.toFixed(2) + ' V';
+    document.getElementById('currentValue').textContent = data.current.toFixed(3) + ' A';
+    document.getElementById('powerValue').textContent = data.power.toFixed(2) + ' W';
     
-    // Update charts if they exist
+    if (data.temperature !== null) {
+        document.getElementById('temperatureValue').textContent = data.temperature.toFixed(1) + ' °C';
+    }
+    
+    document.getElementById('lastUpdateTime').textContent = data.timestamp;
+    
+    // Update status indicators
+    updateStatusIndicator('voltage', data.battery_voltage >= 3.6 && data.battery_voltage <= 4.1);
+    
+    if (data.temperature !== null) {
+        updateStatusIndicator('temperature', data.temperature <= 38);
+    }
+    
+    updateSystemStatus(data.status === 'normal');
+    
+    // Update last anomaly if needed
+    if (data.status !== 'normal') {
+        document.getElementById('lastAnomaly').textContent = 
+            `${data.timestamp} (${data.status.replace('_', ' ')})`;
+    }
+    
+    // Add data to charts
     if (window.combinedChart && window.tempChart) {
-        addChartData(window.combinedChart, [data.voltage, data.current]);
-        addChartData(window.tempChart, [data.temperature]);
+        addChartData(window.combinedChart, [data.battery_voltage, data.current]);
+        
+        if (data.temperature !== null) {
+            addChartData(window.tempChart, [data.temperature]);
+        }
     }
 });
 
