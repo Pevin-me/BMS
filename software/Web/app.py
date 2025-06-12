@@ -1,13 +1,14 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from flask_socketio import SocketIO, emit
 from sensor_reader import BMSSensorReader
 import threading
 import time
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
+import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'
+app.secret_key = os.urandom(24)
 socketio = SocketIO(app)
 
 # Initialize sensor reader
@@ -16,47 +17,56 @@ sensor_reader = BMSSensorReader()
 def sensor_reading_thread():
     """Background thread that reads sensors and emits updates"""
     while True:
-        sensor_data = sensor_reader.read_all_sensors()
-        
-        # Check for anomalies
-        status = "normal"
-        if sensor_data['temperature'] and sensor_data['temperature'] > 40:
-            status = "temperature_anomaly"
-        if sensor_data['battery_voltage'] < 3.6 or sensor_data['battery_voltage'] > 4.1:
-            status = "voltage_anomaly"
-        
-        # Add status to data
-        sensor_data['status'] = status
-        
-        # Save to database
-        conn = sqlite3.connect('bms.db')
-        c = conn.cursor()
-        c.execute('''INSERT INTO battery_data 
-                    (voltage, current, power, temperature, status)
-                    VALUES (?, ?, ?, ?, ?)''',
-                    (sensor_data['battery_voltage'], 
-                     sensor_data['current'], 
-                     sensor_data['power'], 
-                     sensor_data['temperature'], 
-                     status))
-        conn.commit()
-        conn.close()
-        
-        # Emit to all connected clients
-        socketio.emit('battery_update', sensor_data)
-        
-        # Check for anomalies and send notifications
-        if status != "normal":
-            notification = {
-                'message': f"Anomaly detected: {status.replace('_', ' ')}",
-                'level': 'warning',
-                'timestamp': time.strftime("%H:%M:%S")
+        try:
+            sensor_data = sensor_reader.read_all_sensors()
+
+            data = {
+                'voltage': sensor_data.get('battery_voltage', 0.0),
+                'current': sensor_data.get('current', 0.0),
+                'power': sensor_data.get('power', 0.0),
+                'temperature': sensor_data.get('temperature', None),
+                'status': 'normal',
+                'timestamp': sensor_data.get('timestamp')
             }
-            socketio.emit('notification', notification)
-        
+
+            # Check for anomalies
+            if data['temperature'] is not None and data['temperature'] > 40:
+                data['status'] = "temperature_anomaly"
+            if data['voltage'] < 3.6 or data['voltage'] > 4.1:
+                data['status'] = "voltage_anomaly"
+
+            # Save to database
+            conn = sqlite3.connect('bms.db')
+            c = conn.cursor()
+            c.execute('''INSERT INTO battery_data 
+                        (voltage, current, power, temperature, status)
+                        VALUES (?, ?, ?, ?, ?)''',
+                        (data['voltage'], 
+                         data['current'], 
+                         data['power'], 
+                         data['temperature'], 
+                         data['status']))
+            conn.commit()
+            conn.close()
+
+            # Emit to all connected clients
+            socketio.emit('battery_update', data)
+
+            # Check for anomalies and send notifications
+            if data['status'] != "normal":
+                notification = {
+                    'message': f"Anomaly detected: {data['status'].replace('_', ' ')}",
+                    'level': 'warning',
+                    'timestamp': time.strftime("%H:%M:%S")
+                }
+                socketio.emit('notification', notification)
+
+        except Exception as e:
+            print(f"Sensor reading failed: {e}")
+
         time.sleep(2)  # Adjust interval as needed
 
-# Start the background thread when the app starts
+# Start the real sensor background thread when the app starts
 threading.Thread(target=sensor_reading_thread, daemon=True).start()
 
 # Database setup
@@ -96,77 +106,18 @@ def init_db():
 
 init_db()
 
-# Mock user data (in production, use proper database)
-users = {
-    'admin': generate_password_hash('admin123'),
-    'user1': generate_password_hash('password1')
-}
-
-# Simulated battery data (replace with actual sensor readings)
-def generate_battery_data():
-    while True:
-        voltage = round(random.uniform(3.5, 4.2), 2)
-        current = round(random.uniform(0.5, 2.5), 2)
-        power = round(voltage * current, 2)
-        temperature = round(random.uniform(25, 40), 1)
-        
-        # Check for anomalies
-        status = "normal"
-        if voltage < 3.6 or voltage > 4.1:
-            status = "voltage_anomaly"
-        elif temperature > 38:
-            status = "temperature_anomaly"
-        
-        data = {
-            'voltage': voltage,
-            'current': current,
-            'power': power,
-            'temperature': temperature,
-            'status': status,
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # Save to database
-        conn = sqlite3.connect('bms.db')
-        c = conn.cursor()
-        c.execute('''INSERT INTO battery_data 
-                    (voltage, current, power, temperature, status)
-                    VALUES (?, ?, ?, ?, ?)''',
-                    (voltage, current, power, temperature, status))
-        conn.commit()
-        conn.close()
-        
-        # Emit to all connected clients
-        socketio.emit('battery_update', data)
-        
-        # Check for anomalies and send notifications
-        if status != "normal":
-            notification = {
-                'message': f"Anomaly detected: {status.replace('_', ' ')}",
-                'level': 'warning',
-                'timestamp': datetime.now().strftime("%H:%M:%S")
-            }
-            socketio.emit('notification', notification)
-        
-        time.sleep(2)
-
-# Start background thread for simulated data
-data_thread = Thread(target=generate_battery_data)
-data_thread.daemon = True
-data_thread.start()
-
 @app.route('/contact-admin', methods=['GET', 'POST'])
 def contact_admin():
     if request.method == 'POST':
-        # Process form submission
-        name = request.form.get('name')
-        email = request.form.get('email')
-        message = request.form.get('message')
-        
+        first_name = request.form.get('FirstName', '')
+        last_name = request.form.get('LastName', '')
+        email = request.form.get('Email', '')
+        phone = request.form.get('PhoneNumber', '')
+        message = request.form.get('Message', '')
+        full_name = f"{first_name} {last_name}"
         # Here you would typically send an email or save to database
         flash('Your message has been sent to the administrator')
         return redirect(url_for('login'))
-    
     return render_template('contact_admin.html')
 
 @app.route('/')
@@ -256,3 +207,7 @@ def handle_connect():
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
