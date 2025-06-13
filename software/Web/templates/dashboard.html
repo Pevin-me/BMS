@@ -12,7 +12,7 @@
             <ul>
                 <li class="active"><a href="#"><i class="fas fa-home"></i> Dashboard</a></li>
                 <li><a href="#"><i class="fas fa-chart-line"></i> Analytics</a></li>
-                <li><a href="#"><i class="fas fa-history"></i> History</a></li>
+                <li><a href="{{ url_for('history') }}"><i class="fas fa-history"></i> History</a></li>
                 <li><a href="#"><i class="fas fa-cog"></i> Settings</a></li>
                 <li><a href="{{ url_for('contact_admin') }}"><i class="fas fa-question-circle"></i> Need Help</a></li>
                 <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
@@ -33,17 +33,10 @@
             <div class="header-actions">
                 <div class="last-update">
                     <i class="fas fa-clock"></i>
-                    <span id="lastUpdateTime">
-                        {% if data %}
-                            {{ data.timestamp }}
-                        {% else %}
-                            No data available
-                        {% endif %}
-                    </span>
+                    <span id="lastUpdateTime"></span>
                 </div>
             </div>
         </header>
-        
         <div class="dashboard-grid">
             <!-- Voltage Card -->
             <div class="metric-card animate__animated animate__fadeInUp">
@@ -53,7 +46,7 @@
                 </div>
                 <div class="metric-value" id="voltageValue">
                     {% if data %}
-                        {{ data.voltage }} V
+                        {{ '%.2f' % data.voltage }} V
                     {% else %}
                         N/A
                     {% endif %}
@@ -78,7 +71,7 @@
                 </div>
                 <div class="metric-value" id="currentValue">
                     {% if data %}
-                        {{ data.current }} A
+                        {{ '%.2f' % data.current }} A
                     {% else %}
                         N/A
                     {% endif %}
@@ -97,7 +90,7 @@
                 </div>
                 <div class="metric-value" id="powerValue">
                     {% if data %}
-                        {{ data.power }} W
+                        {{ '%.2f' % data.power }} W
                     {% else %}
                         N/A
                     {% endif %}
@@ -116,7 +109,7 @@
                 </div>
                 <div class="metric-value" id="temperatureValue">
                     {% if data %}
-                        {{ data.temperature }} °C
+                        {{ '%.1f' % data.temperature }} °C
                     {% else %}
                         N/A
                     {% endif %}
@@ -195,6 +188,24 @@
 
 {% block scripts %}
 <script>
+    // --- LIVE IST CLOCK ---
+    function updateISTTime() {
+        const now = new Date();
+        // IST is UTC+5:30
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const ist = new Date(now.getTime() + istOffset);
+        const formatted = ist.getFullYear() + '-' +
+            String(ist.getMonth() + 1).padStart(2, '0') + '-' +
+            String(ist.getDate()).padStart(2, '0') + ' ' +
+            String(ist.getHours()).padStart(2, '0') + ':' +
+            String(ist.getMinutes()).padStart(2, '0') + ':' +
+            String(ist.getSeconds()).padStart(2, '0');
+        document.getElementById('lastUpdateTime').textContent = formatted + ' IST';
+    }
+    setInterval(updateISTTime, 1000);
+    updateISTTime();
+    // --- END LIVE IST CLOCK ---
+
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize charts
         const combinedCtx = document.getElementById('combinedChart').getContext('2d');
@@ -207,7 +218,7 @@
                 datasets: [
                     {
                         label: 'Voltage (V)',
-                        data: Array.from({length: 20}, () => Math.random() * 0.7 + 3.5),
+                        data: Array(20).fill(0),
                         borderColor: 'rgba(75, 192, 192, 1)',
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         tension: 0.4,
@@ -215,7 +226,7 @@
                     },
                     {
                         label: 'Current (A)',
-                        data: Array.from({length: 20}, () => Math.random() * 2 + 0.5),
+                        data: Array(20).fill(0),
                         borderColor: 'rgba(54, 162, 235, 1)',
                         backgroundColor: 'rgba(54, 162, 235, 0.2)',
                         tension: 0.4,
@@ -296,11 +307,11 @@
         const socket = io();
         
         socket.on('battery_update', function(data) {
-            document.getElementById('voltageValue').textContent = data.voltage + ' V';
-            document.getElementById('currentValue').textContent = data.current + ' A';
-            document.getElementById('powerValue').textContent = data.power + ' W';
-            document.getElementById('temperatureValue').textContent = data.temperature + ' °C';
-            document.getElementById('lastUpdateTime').textContent = data.timestamp;
+            document.getElementById('voltageValue').textContent = parseFloat(data.voltage).toFixed(2) + ' V';
+            document.getElementById('currentValue').textContent = parseFloat(data.current).toFixed(2) + ' A';
+            document.getElementById('powerValue').textContent = parseFloat(data.power).toFixed(2) + ' W';
+            document.getElementById('temperatureValue').textContent = parseFloat(data.temperature).toFixed(1) + ' °C';
+            // Do NOT update lastUpdateTime here -- it is now a live IST clock
             
             // Update status indicators
             const voltageStatus = document.querySelector('.metric-card:nth-child(1) .status');

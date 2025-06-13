@@ -52,7 +52,7 @@ socket.on('battery_update', function(data) {
         document.getElementById('temperatureValue').textContent = data.temperature.toFixed(1) + ' °C';
     }
     
-    document.getElementById('lastUpdateTime').textContent = data.timestamp;
+    //document.getElementById('lastUpdateTime').textContent = data.timestamp;
     
     // Update status indicators
     updateStatusIndicator('voltage', data.battery_voltage >= 3.6 && data.battery_voltage <= 4.1);

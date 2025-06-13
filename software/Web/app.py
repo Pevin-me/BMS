@@ -6,6 +6,8 @@ import time
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import csv
+from flask import Response
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -15,19 +17,29 @@ socketio = SocketIO(app)
 sensor_reader = BMSSensorReader()
 
 def sensor_reading_thread():
-    """Background thread that reads sensors and emits updates"""
     while True:
         try:
             sensor_data = sensor_reader.read_all_sensors()
-
+            voltage = sensor_data.get('battery_voltage', 0.0)
+            current = sensor_data.get('current', 0.0)
+            power = sensor_data.get('power', 0.0)
+            temperature = sensor_data.get('temperature', None)
+            # Ignore negative values
+            if voltage < 0:
+                voltage = 0.0
+            if current < 0:
+                current = 0.0
+            if power < 0:
+                power = 0.0
             data = {
-                'voltage': sensor_data.get('battery_voltage', 0.0),
-                'current': sensor_data.get('current', 0.0),
-                'power': sensor_data.get('power', 0.0),
-                'temperature': sensor_data.get('temperature', None),
+                'voltage': voltage,
+                'current': current,
+                'power': power,
+                'temperature': temperature,
                 'status': 'normal',
                 'timestamp': sensor_data.get('timestamp')
             }
+            # ...rest of the thread logic...
 
             # Check for anomalies
             if data['temperature'] is not None and data['temperature'] > 40:
@@ -64,7 +76,7 @@ def sensor_reading_thread():
         except Exception as e:
             print(f"Sensor reading failed: {e}")
 
-        time.sleep(2)  # Adjust interval as needed
+        time.sleep(1)  # Adjust interval as needed
 
 # Start the real sensor background thread when the app starts
 threading.Thread(target=sensor_reading_thread, daemon=True).start()
@@ -205,9 +217,53 @@ def get_battery_data():
 def handle_connect():
     print('Client connected')
 
+@app.route('/download_csv')
+def download_csv():
+    conn = sqlite3.connect('bms.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM battery_data ORDER BY timestamp DESC')
+    rows = c.fetchall()
+    conn.close()
+
+    header = ['id', 'timestamp', 'voltage', 'current', 'power', 'temperature', 'status']
+
+    def generate():
+        yield ','.join(header) + '\n'
+        for row in rows:
+            yield ','.join([str(x) if x is not None else '' for x in row]) + '\n'
+
+    return Response(generate(), mimetype='text/csv',
+                    headers={"Content-Disposition": "attachment;filename=battery_data.csv"})
+
+@app.route('/history')
+def history():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    conn = sqlite3.connect('bms.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM battery_data ORDER BY timestamp DESC LIMIT 20')
+    rows = c.fetchall()
+    conn.close()
+
+    data = [
+        {
+            'id': row[0],
+            'timestamp': row[1],
+            'voltage': row[2],
+            'current': row[3],
+            'power': row[4],
+            'temperature': row[5],
+            'status': row[6]
+        }
+        for row in rows
+    ]
+    return render_template('history.html', data=data)
+
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
 
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
+
